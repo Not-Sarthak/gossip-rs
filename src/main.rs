@@ -6,69 +6,75 @@ mod network;
 
 use std::thread;
 use std::time::Duration;
-use node::{Node, Protocol};
+use node::Node;
 use crds::CrdsValue;
 use network::Network;
 
+fn run_node(mut node: Node, net: Network, rounds: usize) {
+    // listen for incoming messages between gossip rounds
+    for round in 0..rounds {
+        println!("\n[round {}] {} has {} keys", round, node.id, node.crds.entries.len());
+
+        // listen for any incoming messages (pull requests, pushes, pings)
+        for _ in 0..5 {
+            node.listen_once(&net, Duration::from_millis(100));
+        }
+
+        // do a gossip round (ping + pull from a random peer)
+        node.gossip_round(&net);
+
+        thread::sleep(Duration::from_millis(200));
+    }
+
+    println!("\n{} final state", node.id);
+    println!("  keys: {:?}", node.crds.keys().collect::<Vec<_>>());
+    println!("  alive peers: {:?}", node.alive_peers);
+}
+
 fn main() {
-    // node_b runs in a separate thread, listening on port 9001
-    let handle = thread::spawn(|| {
-        let mut node_b = Node::new("BBB".into());
+    let addr_a = "127.0.0.1:9000";
+    let addr_b = "127.0.0.1:9001";
+    let addr_c = "127.0.0.1:9002";
+
+    let rounds = 5;
+
+    // node_a
+    let handle_a = thread::spawn(move || {
+        let mut node_a = Node::new("node_a".into(), addr_a.into());
+        node_a.known_peers.push(addr_b.into());
+        node_a.known_peers.push(addr_c.into());
+        node_a.crds.insert("AAA".into(), CrdsValue::ContactInfo { ip: "127.0.0.1".into(), port: 9000 }, 1000);
+        node_a.crds.insert("AAA".into(), CrdsValue::Vote { slot: 100 }, 1000);
+
+        let net = Network::new(addr_a);
+        run_node(node_a, net, rounds);
+    });
+
+    // node_b
+    let handle_b = thread::spawn(move || {
+        let mut node_b = Node::new("node_b".into(), addr_b.into());
+        node_b.known_peers.push(addr_a.into());
+        node_b.known_peers.push(addr_c.into());
         node_b.crds.insert("BBB".into(), CrdsValue::ContactInfo { ip: "127.0.0.1".into(), port: 9001 }, 1000);
         node_b.crds.insert("BBB".into(), CrdsValue::Vote { slot: 200 }, 1000);
 
-        let net = Network::new("127.0.0.1:9001");
-        println!("node_b listening on 9001");
-
-        // receive pull request from node_a
-        let (msg, from) = net.receive();
-        if let Protocol::PullRequest { filter, .. } = &msg {
-            println!("node_b received pull request from {}", from);
-            let response = node_b.handle_pull_request(filter);
-            net.send(&from.to_string(), &response);
-            println!("node_b sent pull response");
-        }
-
-        // receive push message from node_a
-        let (msg, from) = net.receive();
-        if let Protocol::PushMessage { entries, .. } = msg {
-            println!("node_b received push from {}: {} entries", from, entries.len());
-            node_b.handle_push_message(entries);
-        }
-
-        println!("node_b final keys: {:?}", node_b.crds.keys().collect::<Vec<_>>());
+        let net = Network::new(addr_b);
+        run_node(node_b, net, rounds);
     });
 
-    // give node_b time to start
-    thread::sleep(Duration::from_millis(100));
+    // node_c
+    let handle_c = thread::spawn(move || {
+        let mut node_c = Node::new("node_c".into(), addr_c.into());
+        node_c.known_peers.push(addr_a.into());
+        node_c.known_peers.push(addr_b.into());
+        node_c.crds.insert("CCC".into(), CrdsValue::ContactInfo { ip: "127.0.0.1".into(), port: 9002 }, 1000);
+        node_c.crds.insert("CCC".into(), CrdsValue::Vote { slot: 300 }, 1000);
 
-    // node_a on port 9000
-    let mut node_a = Node::new("AAA".into());
-    node_a.crds.insert("AAA".into(), CrdsValue::ContactInfo { ip: "127.0.0.1".into(), port: 9000 }, 1000);
-    node_a.crds.insert("AAA".into(), CrdsValue::Vote { slot: 100 }, 1000);
+        let net = Network::new(addr_c);
+        run_node(node_c, net, rounds);
+    });
 
-    let net = Network::new("127.0.0.1:9000");
-    println!("node_a listening on 9000");
-
-    // pull: node_a asks node_b for what it's missing
-    let pull_request = node_a.create_pull_request();
-    net.send("127.0.0.1:9001", &pull_request);
-    println!("node_a sent pull request to node_b");
-
-    let (response, _) = net.receive();
-    if let Protocol::PullResponse { entries, .. } = response {
-        println!("node_a received {} entries from node_b", entries.len());
-        node_a.handle_pull_response(entries);
-    }
-
-    // push: node_a got new data, push it to node_b
-    node_a.crds.insert("CCC".into(), CrdsValue::Vote { slot: 300 }, 2000);
-    let new_entry = node_a.crds.get("CCC_Vote").unwrap().clone();
-    let push = node_a.create_push_message(vec![new_entry]);
-    net.send("127.0.0.1:9001", &push);
-    println!("node_a pushed CCC_Vote to node_b");
-
-    println!("node_a final keys: {:?}", node_a.crds.keys().collect::<Vec<_>>());
-
-    handle.join().unwrap();
+    handle_a.join().unwrap();
+    handle_b.join().unwrap();
+    handle_c.join().unwrap();
 }

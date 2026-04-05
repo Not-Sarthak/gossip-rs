@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::time::Duration;
 use crate::node::Protocol;
 
 pub struct Network {
@@ -21,5 +22,17 @@ impl Network {
         let (size, from) = self.socket.recv_from(&mut buf).expect("failed to receive");
         let msg = bincode::deserialize(&buf[..size]).expect("failed to deserialize");
         (msg, from)
+    }
+
+    pub fn try_receive(&self, timeout: Duration) -> Option<(Protocol, std::net::SocketAddr)> {
+        self.socket.set_read_timeout(Some(timeout)).ok()?;
+        let mut buf = [0u8; 65535];
+        match self.socket.recv_from(&mut buf) {
+            Ok((size, from)) => {
+                let msg = bincode::deserialize(&buf[..size]).ok()?;
+                Some((msg, from))
+            }
+            Err(_) => None,
+        }
     }
 }
