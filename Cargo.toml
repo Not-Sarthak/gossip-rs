@@ -1,0 +1,8 @@
+[package]
+name = "bloom-gossip"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fnv = "1.0.7"
+rand = "0.10.0"
