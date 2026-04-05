@@ -1,9 +1,10 @@
 use std::{hash::Hasher, marker::PhantomData};
 use fnv::FnvHasher;
+use serde::{Deserialize, Serialize};
 use std::ops::{BitAnd, BitOrAssign, Shl, Shr};
 use crate::bitvec::BitVec;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bloom<T> {
     pub seed: Vec<u64>,
     pub bloom_filter: BitVec<T>,

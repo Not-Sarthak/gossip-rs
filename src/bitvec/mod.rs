@@ -1,6 +1,7 @@
 use std::ops::{BitOrAssign, Shr, Shl, BitAnd};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitVec<T = u64> {
     bits: Vec<T>,
     len: u64

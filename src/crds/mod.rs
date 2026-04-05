@@ -1,6 +1,8 @@
 // crds -> conflict-free replicated data store
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize)]
 pub enum CrdsValue {
     ContactInfo {
         ip: String,
@@ -14,6 +16,7 @@ pub enum CrdsValue {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CrdsEntry {
     pub value: CrdsValue,
     pub timestamp: u64,
